@@ -1,0 +1,71 @@
+services:
+  db:
+    image: postgis/postgis:15-3.3
+    container_name: rigit_postgres
+    environment:
+      POSTGRES_DB: rigit_db
+      POSTGRES_USER: rigit_user
+      POSTGRES_PASSWORD: rigit_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rigit_user -d rigit_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - rigit_network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: rigit_backend
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://rigit_user:rigit_password@db:5432/rigit_db
+      NODE_ENV: development
+      PORT: 5000
+      JWT_SECRET: ${JWT_SECRET:-rigit-dev-secret-change-in-production}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    ports:
+      - "5000:5000"
+    command: npm run dev
+    networks:
+      - rigit_network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: rigit_frontend
+    depends_on:
+      - backend
+    environment:
+      VITE_API_URL: http://localhost:5000
+      VITE_GOOGLE_MAPS_API_KEY: ${VITE_GOOGLE_MAPS_API_KEY:-}
+      VITE_CESIUM_ION_TOKEN: ${VITE_CESIUM_ION_TOKEN:-}
+      VITE_STRIPE_PUBLISHABLE_KEY: ${VITE_STRIPE_PUBLISHABLE_KEY:-}
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "5173:5173"
+    command: npm run dev
+    networks:
+      - rigit_network
+
+volumes:
+  postgres_data:
+
+networks:
+  rigit_network:
+    driver: bridge
